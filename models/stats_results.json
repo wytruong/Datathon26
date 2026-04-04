@@ -1,0 +1,58 @@
+{
+  "ttest_covid": {
+    "t_stat": 1.6157,
+    "p_value": 0.1072,
+    "interpretation": "not significant",
+    "mean_pre": 0.5302,
+    "mean_post": 0.5208
+  },
+  "mannwhitney": {
+    "u_stat": 355141.0,
+    "p_value": 0.0,
+    "interpretation": "significant",
+    "highest_level": "COMPREHENSIVE"
+  },
+  "anomaly_count": 0,
+  "top_counties": [
+    {
+      "county_name": "KINGS",
+      "avg_burden_all_years": 1.3891
+    },
+    {
+      "county_name": "MADERA",
+      "avg_burden_all_years": 0.9203
+    },
+    {
+      "county_name": "PLACER",
+      "avg_burden_all_years": 0.9018
+    },
+    {
+      "county_name": "SACRAMENTO",
+      "avg_burden_all_years": 0.8614
+    },
+    {
+      "county_name": "STANISLAUS",
+      "avg_burden_all_years": 0.7712
+    },
+    {
+      "county_name": "YUBA",
+      "avg_burden_all_years": 0.7701
+    },
+    {
+      "county_name": "SAN DIEGO",
+      "avg_burden_all_years": 0.7662
+    },
+    {
+      "county_name": "SANTA CLARA",
+      "avg_burden_all_years": 0.7512
+    },
+    {
+      "county_name": "FRESNO",
+      "avg_burden_all_years": 0.6534
+    },
+    {
+      "county_name": "RIVERSIDE",
+      "avg_burden_all_years": 0.6425
+    }
+  ]
+}

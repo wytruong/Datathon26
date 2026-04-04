@@ -1,0 +1,11 @@
+burden_lag_1
+burden_lag_2
+burden_lag_3
+rolling_mean_3
+rolling_mean_7
+rolling_std_7
+pct_change_recent
+ed_visits_per_year
+month
+is_post_covid
+year_index

@@ -1,0 +1,12 @@
+feature,importance
+pct_change_recent,0.28201059
+year_index,0.1659066
+is_post_covid,0.10952067
+ed_visits_per_year,0.07542874
+rolling_std_7,0.069280535
+burden_lag_1,0.06254865
+rolling_mean_3,0.061850235
+rolling_mean_7,0.0614829
+burden_lag_3,0.05649233
+burden_lag_2,0.0554787
+month,0.0

@@ -1,0 +1,16 @@
+{
+  "even_vs_odd": {
+    "t_stat": -2.0327,
+    "p_value": 0.0421,
+    "interpretation": "significant",
+    "n": 1895
+  },
+  "pre_vs_post_covid": {
+    "t_stat": 1.6157,
+    "p_value": 0.1072,
+    "interpretation": "not significant",
+    "mean_pre": 0.5302,
+    "mean_post": 0.5208,
+    "n_facilities": 299
+  }
+}
