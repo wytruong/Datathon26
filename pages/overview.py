@@ -8,54 +8,63 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.style import CHART_BASE, CHART_WIDTH
 from utils.data import load_clean_data, load_arima_forecast
 
-df      = load_clean_data()
-arima   = load_arima_forecast()
+df    = load_clean_data()
+arima = load_arima_forecast()
 
-# ── Facility selector ──────────────────────────────────────────────────────────
 facilities = sorted(df["facility_name"].dropna().unique().tolist())
 
+
+def _search_input(label, key_input, key_select, default):
+    """Search-as-you-type facility picker. Returns selected facility name."""
+    query = st.text_input(label, value=default, placeholder="Type to search…", key=key_input)
+    matches = [f for f in facilities if query.lower() in f.lower()] if query else facilities
+    if not matches:
+        st.warning("No matching facilities.")
+        return default
+    if len(matches) == 1:
+        st.caption(f"Selected: **{matches[0]}**")
+        return matches[0]
+    return st.selectbox("Matching facilities", matches, label_visibility="collapsed", key=key_select)
+
+
+# ── Primary facility selector ──────────────────────────────────────────────────
 col_f, col_d, _ = st.columns([2, 2, 3])
 with col_f:
     default_facility = st.session_state.get("facility", facilities[0]) \
                        if st.session_state.get("facility") in facilities else facilities[0]
-    query = st.text_input("Search Facility", value=default_facility, placeholder="Type to search…")
-    matches = [f for f in facilities if query.lower() in f.lower()] if query else facilities
-    if not matches:
-        st.warning("No matching facilities.")
-        facility = default_facility
-    elif len(matches) == 1:
-        facility = matches[0]
-        st.caption(f"Selected: **{facility}**")
-    else:
-        facility = st.selectbox("Matching facilities", matches, label_visibility="collapsed")
+    facility = _search_input("Search Facility", "fac_query", "fac_select", default_facility)
     st.session_state["facility"] = facility
+
 with col_d:
     year_range = st.slider("Year Range", 2012, 2024, (2012, 2024))
 
+# ── Comparison toggle ──────────────────────────────────────────────────────────
+compare_mode = st.toggle("Compare with another facility", key="compare_mode")
+
+facility2 = None
+if compare_mode:
+    default2 = st.session_state.get("facility2", facilities[1] if len(facilities) > 1 else facilities[0])
+    if default2 not in facilities:
+        default2 = facilities[1] if len(facilities) > 1 else facilities[0]
+    facility2 = _search_input("Search Second Facility", "fac2_query", "fac2_select", default2)
+    st.session_state["facility2"] = facility2
+
 st.divider()
 
-# ── Filter facility data ───────────────────────────────────────────────────────
+# ── Filter data ────────────────────────────────────────────────────────────────
 fac_df = df[df["facility_name"] == facility].sort_values("year")
-
-if fac_df.empty:
-    st.warning(f"No data available for **{facility}**.")
-    st.stop()
-
-fac_df = fac_df[
-    (fac_df["year"] >= year_range[0]) &
-    (fac_df["year"] <= year_range[1])
-]
+fac_df = fac_df[(fac_df["year"] >= year_range[0]) & (fac_df["year"] <= year_range[1])]
 
 if fac_df.empty:
     st.warning(f"No data for **{facility}** in the selected year range.")
     st.stop()
 
-# ── Metrics ────────────────────────────────────────────────────────────────────
+# ── Metrics (primary facility only) ───────────────────────────────────────────
 latest   = fac_df.sort_values("year").iloc[-1]
 prev_row = fac_df.sort_values("year").iloc[-2] if len(fac_df) >= 2 else None
 
-current_burden_raw = latest["burden_score"]
-current_burden_pct = round(current_burden_raw * 100, 1)
+current_burden_pct = round(latest["burden_score"] * 100, 1)
+avg_encounters     = int(fac_df["ed_visit"].mean())
 
 if prev_row is not None:
     prev_burden_pct = round(prev_row["burden_score"] * 100, 1)
@@ -66,8 +75,6 @@ else:
     burden_delta = 0.0
     burden_up    = False
     delta_text   = "no prior year"
-
-avg_encounters = int(fac_df["ed_visit"].mean())
 
 
 def _card(label, value, delta_text, delta_up, progress_pct, show_bar=True):
@@ -90,7 +97,7 @@ def _card(label, value, delta_text, delta_up, progress_pct, show_bar=True):
     """).strip()
 
 
-# ── Area chart ─────────────────────────────────────────────────────────────────
+# ── Burden trend chart ─────────────────────────────────────────────────────────
 years   = fac_df["year"].tolist()
 burdens = (fac_df["burden_score"] * 100).tolist()
 
@@ -101,18 +108,33 @@ fig.add_trace(go.Scatter(
     line=dict(color="rgba(20,53,42,0.8)", width=2),
     marker=dict(size=4, color="rgba(20,53,42,0.8)"),
     fill="tozeroy", fillcolor="rgba(20,53,42,0.07)",
-    name="Burden",
+    name=facility,
     hovertemplate="Year %{x}<br>Burden: %{y:.1f}%<extra></extra>",
 ))
 
+# Comparison overlay
+if compare_mode and facility2:
+    fac2_df = df[df["facility_name"] == facility2].sort_values("year")
+    fac2_df = fac2_df[(fac2_df["year"] >= year_range[0]) & (fac2_df["year"] <= year_range[1])]
+    if not fac2_df.empty:
+        fig.add_trace(go.Scatter(
+            x=fac2_df["year"].tolist(),
+            y=(fac2_df["burden_score"] * 100).tolist(),
+            mode="lines+markers",
+            line=dict(color="rgba(245,158,11,0.8)", width=2),
+            marker=dict(size=4, color="rgba(245,158,11,0.8)"),
+            name=facility2,
+            hovertemplate="Year %{x}<br>Burden: %{y:.1f}%<extra></extra>",
+        ))
+    else:
+        st.warning(f"No data for **{facility2}** in the selected year range.")
+
 # ARIMA forecast dotted line
 if not arima.empty:
-    # Connect from last real data point into forecast
-    last_year    = fac_df["year"].max()
-    last_burden  = (fac_df[fac_df["year"] == last_year]["burden_score"].values[0]) * 100
-    fc_years     = [last_year] + arima["year"].tolist()
-    # Scale forecast to % (arima was trained on raw burden_score)
-    fc_values    = [last_burden] + (arima["forecast"] * 100).tolist()
+    last_year   = fac_df["year"].max()
+    last_burden = fac_df[fac_df["year"] == last_year]["burden_score"].values[0] * 100
+    fc_years    = [last_year] + arima["year"].tolist()
+    fc_values   = [last_burden] + (arima["forecast"] * 100).tolist()
     fig.add_trace(go.Scatter(
         x=fc_years, y=fc_values,
         mode="lines",
@@ -144,7 +166,7 @@ fig.update_layout(**{
 })
 st.plotly_chart(fig, width=CHART_WIDTH)
 
-# ── Metric cards ───────────────────────────────────────────────────────────────
+# ── Metric cards (primary facility) ───────────────────────────────────────────
 m1, m2, m3 = st.columns(3)
 
 with m1:

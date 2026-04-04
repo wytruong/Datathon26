@@ -138,6 +138,10 @@ footer { visibility: hidden; }
 .ai-card-header { font-size: 10px; font-weight: 600; color: #9ca3af; text-transform: uppercase; margin-bottom: 8px; }
 .ai-card-body { font-size: 13px; color: #374151; line-height: 1.5; }
 
+/* Pulse animation for burden alert dot */
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+.pulse-dot { animation: pulse 1.5s ease-in-out infinite; }
+
 </style>
 """
 
