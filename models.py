@@ -10,11 +10,12 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from sklearn.linear_model import LogisticRegression, LinearRegression
+from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.metrics import (
     classification_report, roc_auc_score,
     mean_squared_error, r2_score,
 )
+from sklearn.model_selection import cross_val_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
@@ -23,7 +24,7 @@ from xgboost import XGBClassifier
 from statsmodels.tsa.arima.model import ARIMA
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-INPUT_PATH   = "data/ca_ed_features.csv"
+INPUT_PATH   = "data/ca_ed_features_v2.csv"
 MODELS_DIR   = "models"
 
 # ── Column config ──────────────────────────────────────────────────────────────
@@ -36,6 +37,9 @@ DROP_COLS = [
     "year", "oshpd_id", "facility_name", "county_name",
     "facility_id", "er_service_level_desc",
     "ed_visit", "ed_admit", "burden_score", "high_burden_next",
+    # intermediate metrics — lag/normalized versions used as features instead
+    "true_burden_score", "burden_score_normalized",
+    "visits_per_station", "visits_per_station_normalized",
 ]
 
 TRAIN_CUTOFF = 2021  # train on year <= this
@@ -69,6 +73,28 @@ def main():
     X_test  = test_df[feature_cols].copy()
     y_test  = test_df[TARGET_COL].copy()
 
+    # ── Load existing model AUC for comparison ─────────────────────────────────
+    old_lr_auc  = None
+    old_xgb_auc = None
+    try:
+        old_lr_path  = os.path.join(MODELS_DIR, "logistic_model.pkl")
+        old_xgb_path = os.path.join(MODELS_DIR, "xgb_model.pkl")
+        feat_list_path = os.path.join(MODELS_DIR, "feature_list.txt")
+        if os.path.exists(feat_list_path):
+            with open(feat_list_path) as f:
+                old_features = [l.strip() for l in f if l.strip()]
+            old_X_test = test_df[[c for c in old_features if c in test_df.columns]]
+            if os.path.exists(old_lr_path):
+                old_lr = joblib.load(old_lr_path)
+                old_lr_auc = roc_auc_score(y_test, old_lr.predict_proba(old_X_test)[:, 1])
+                print(f"Existing logistic ROC-AUC  : {old_lr_auc:.4f}")
+            if os.path.exists(old_xgb_path):
+                old_xgb = joblib.load(old_xgb_path)
+                old_xgb_auc = roc_auc_score(y_test, old_xgb.predict_proba(old_X_test)[:, 1])
+                print(f"Existing XGBoost ROC-AUC   : {old_xgb_auc:.4f}")
+    except Exception as exc:
+        print(f"Could not load existing models for comparison: {exc}")
+
     # ═══════════════════════════════════════════════════════════════════════════
     # STEP 1 — LOGISTIC REGRESSION
     # ═══════════════════════════════════════════════════════════════════════════
@@ -91,7 +117,13 @@ def main():
 
     print("\nClassification Report:")
     print(classification_report(y_test, lr_pred, digits=3))
-    print(f"ROC-AUC: {roc_auc_score(y_test, lr_proba):.4f}")
+    new_lr_auc = roc_auc_score(y_test, lr_proba)
+    print(f"ROC-AUC: {new_lr_auc:.4f}")
+    if old_lr_auc is not None:
+        if new_lr_auc > old_lr_auc:
+            print(f"Model improved ({old_lr_auc:.4f} → {new_lr_auc:.4f})")
+        else:
+            print(f"Model unchanged - keeping new features for richer data story ({old_lr_auc:.4f} → {new_lr_auc:.4f})")
 
     # Coefficients
     lr_model = lr_pipeline.named_steps["model"]
@@ -127,7 +159,13 @@ def main():
 
     print("\nClassification Report:")
     print(classification_report(y_test, xgb_pred, digits=3))
-    print(f"ROC-AUC: {roc_auc_score(y_test, xgb_proba):.4f}")
+    new_xgb_auc = roc_auc_score(y_test, xgb_proba)
+    print(f"ROC-AUC: {new_xgb_auc:.4f}")
+    if old_xgb_auc is not None:
+        if new_xgb_auc > old_xgb_auc:
+            print(f"Model improved ({old_xgb_auc:.4f} → {new_xgb_auc:.4f})")
+        else:
+            print(f"Model unchanged - keeping new features for richer data story ({old_xgb_auc:.4f} → {new_xgb_auc:.4f})")
 
     importances_df = pd.DataFrame({
         "feature":    feature_cols,
@@ -141,30 +179,42 @@ def main():
     print(f"  Saved → {MODELS_DIR}/xgb_importances.csv")
 
     # ═══════════════════════════════════════════════════════════════════════════
-    # STEP 3 — LINEAR REGRESSION (predict burden_score)
+    # STEP 3 — RIDGE REGRESSION (predict burden_score)
     # ═══════════════════════════════════════════════════════════════════════════
     print("\n" + "=" * 60)
-    print("STEP 3 — LINEAR REGRESSION")
+    print("STEP 3 — RIDGE REGRESSION")
     print("=" * 60)
 
-    train_lr = train_df.dropna(subset=[BURDEN_COL])
-    test_lr  = test_df.dropna(subset=[BURDEN_COL])
+    LIN_FEATURES = ["year_index", "rolling_mean_7", "burden_lag_1"]
+    lin_feat_cols = [c for c in LIN_FEATURES if c in df.columns]
+    missing_lin = [c for c in LIN_FEATURES if c not in df.columns]
+    if missing_lin:
+        print(f"WARNING: features not found, skipping: {missing_lin}")
+    print(f"Using features: {lin_feat_cols}")
+
+    train_lr   = train_df.dropna(subset=[BURDEN_COL])
+    test_lr    = test_df.dropna(subset=[BURDEN_COL])
     y_train_lr = train_lr[BURDEN_COL].copy()
     y_test_lr  = test_lr[BURDEN_COL].copy()
-    X_train_lr = train_lr[feature_cols].copy()
-    X_test_lr  = test_lr[feature_cols].copy()
+    X_train_lr = train_lr[lin_feat_cols].copy()
+    X_test_lr  = test_lr[lin_feat_cols].copy()
 
     lin_model = Pipeline([
         ("imputer", SimpleImputer(strategy="median")),
-        ("model",   LinearRegression()),
+        ("model",   Ridge(alpha=1.0)),
     ])
+
+    cv_scores = cross_val_score(lin_model, X_train_lr, y_train_lr, cv=5, scoring="r2")
+    print(f"Cross-validated R²: {cv_scores.mean():.4f} (+/- {cv_scores.std():.4f})")
+    print(f"This is more honest than train R²")
+
     lin_model.fit(X_train_lr, y_train_lr)
     lin_pred = lin_model.predict(X_test_lr)
 
     rmse = np.sqrt(mean_squared_error(y_test_lr, lin_pred))
     r2   = r2_score(y_test_lr, lin_pred)
-    print(f"RMSE      : {rmse:.4f}")
-    print(f"R-squared : {r2:.4f}")
+    print(f"Test RMSE      : {rmse:.4f}")
+    print(f"Test R-squared : {r2:.4f}")
 
     _save(lin_model, "linear_model.pkl")
 

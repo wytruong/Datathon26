@@ -14,12 +14,12 @@ def _path(*parts):
 
 @st.cache_data
 def load_clean_data() -> pd.DataFrame:
-    return pd.read_csv(_path("data", "ca_ed_clean.csv"))
+    return pd.read_csv(_path("data", "ca_ed_final.csv"))
 
 
 @st.cache_data
 def load_features() -> pd.DataFrame:
-    return pd.read_csv(_path("data", "ca_ed_features.csv"))
+    return pd.read_csv(_path("data", "ca_ed_features_v2.csv"))
 
 
 @st.cache_resource

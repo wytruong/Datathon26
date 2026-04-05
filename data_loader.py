@@ -3,6 +3,7 @@ data_loader.py — Load, clean, and reshape ca_ed_data.csv for Aegis.
 Run: python data_loader.py
 """
 import re
+import os
 import pandas as pd
 import numpy as np
 
@@ -247,6 +248,67 @@ def main():
         top5.columns = [col_facility, "avg_burden_score"]
         print("\nTop 5 facilities by avg burden_score:")
         print(top5.to_string(index=False))
+
+    # ── STEP 9 — BUILD FINAL FILE ─────────────────────────────────────────────
+    print("\n" + "=" * 60)
+    print("STEP 9 — BUILD FINAL FILE (ca_ed_final.csv)")
+    print("=" * 60)
+
+    MERGED_PATH = "data/ca_ed_merged.csv"
+    FINAL_PATH  = "data/ca_ed_final.csv"
+
+    try:
+        if os.path.exists(MERGED_PATH):
+            print(f"Found {MERGED_PATH} — loading merged data.")
+            df_final = pd.read_csv(MERGED_PATH)
+            source = "merged"
+        else:
+            print(f"{MERGED_PATH} not found — falling back to {CLEAN_PATH}.")
+            df_final = pd.read_csv(CLEAN_PATH)
+            source = "clean"
+
+        BASE_KEEP = [
+            "year", "oshpd_id", "facility_name", "county_name",
+            "er_service_level_desc", "ed_admit", "ed_visit",
+            "burden_score", "facility_id",
+        ]
+        NEW_COLS = [
+            "treatment_stations", "true_burden_score",
+            "burden_score_normalized", "visits_per_station",
+            "visits_per_station_normalized", "has_treatment_data",
+        ]
+        keep = [c for c in BASE_KEEP if c in df_final.columns]
+        keep += [c for c in NEW_COLS if c in df_final.columns]
+        df_final = df_final[keep].copy()
+
+        # Promote burden_score_normalized → burden_score where has_treatment_data = 1
+        if "has_treatment_data" in df_final.columns and "burden_score_normalized" in df_final.columns:
+            mask = df_final["has_treatment_data"] == 1
+            df_final.loc[mask, "burden_score"] = df_final.loc[mask, "burden_score_normalized"]
+            real_count    = int(mask.sum())
+            fallback_count = int((~mask).sum())
+            print(f"\nburden_score promoted from burden_score_normalized for {real_count} rows.")
+            print(f"Fallback (original burden_score) used for {fallback_count} rows.")
+        else:
+            real_count     = 0
+            fallback_count = len(df_final)
+            print("No treatment data columns found — using original burden_score throughout.")
+
+        df_final.to_csv(FINAL_PATH, index=False)
+        print(f"\nSaved → {FINAL_PATH}")
+
+        print(f"\n── Step 9 Summary ──")
+        print(f"  Source                           : {source}")
+        print(f"  Total rows                       : {len(df_final)}")
+        print(f"  Rows with real treatment data    : {real_count}")
+        print(f"  Rows using fallback burden_score : {fallback_count}")
+        print(f"  Columns in {FINAL_PATH}:")
+        for c in df_final.columns:
+            print(f"    {c}")
+
+    except Exception as exc:
+        print(f"ERROR in Step 9: {exc}")
+        print("ca_ed_final.csv was not created.")
 
 
 if __name__ == "__main__":

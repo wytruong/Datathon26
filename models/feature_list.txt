@@ -1,6 +1,9 @@
+treatment_stations
+has_treatment_data
 burden_lag_1
 burden_lag_2
 burden_lag_3
+visits_per_station_lag1
 rolling_mean_3
 rolling_mean_7
 rolling_std_7

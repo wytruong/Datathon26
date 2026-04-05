@@ -5,8 +5,8 @@ Run: python feature_engineering.py
 import pandas as pd
 import numpy as np
 
-INPUT_PATH  = "data/ca_ed_clean.csv"
-OUTPUT_PATH = "data/ca_ed_features.csv"
+INPUT_PATH  = "data/ca_ed_final.csv"
+OUTPUT_PATH = "data/ca_ed_features_v2.csv"
 
 FACILITY_COL = "facility_id"
 YEAR_COL     = "year"
@@ -41,6 +41,20 @@ def main():
     lag_nulls = df[["burden_lag_1", "burden_lag_2", "burden_lag_3"]].isnull().sum()
     print("Nulls created by lagging:")
     print(lag_nulls.to_string())
+
+    # New lag: visits_per_station_normalized (if present)
+    VPS_NORM_COL = "visits_per_station_normalized"
+    try:
+        if VPS_NORM_COL in df.columns:
+            df["visits_per_station_lag1"] = (
+                df.groupby(FACILITY_COL)[VPS_NORM_COL].shift(1)
+            )
+            print(f"\nvisits_per_station_lag1 created from {VPS_NORM_COL}.")
+            print(f"  Nulls: {df['visits_per_station_lag1'].isnull().sum()}")
+        else:
+            print(f"\n{VPS_NORM_COL} not found — visits_per_station_lag1 skipped.")
+    except Exception as exc:
+        print(f"WARNING: Could not create visits_per_station_lag1: {exc}")
 
     # ── STEP 3 — ROLLING FEATURES ─────────────────────────────────────────────
     print("\n" + "=" * 60)
@@ -141,10 +155,19 @@ def main():
     print(f"Saved → {OUTPUT_PATH}")
 
     final_balance = df["high_burden_next"].value_counts().sort_index()
+    feature_cols = [c for c in df.columns if c not in [
+        "year", "oshpd_id", "facility_name", "county_name",
+        "er_service_level_desc", "ed_admit", "ed_visit",
+        "burden_score", "facility_id", "high_burden_next",
+        "true_burden_score", "burden_score_normalized",
+        "visits_per_station", "visits_per_station_normalized",
+    ]]
     print("\n── Final Summary ──")
     print(f"Total rows          : {len(df)}")
-    print(f"Columns             : {list(df.columns)}")
+    print(f"Total feature count : {len(feature_cols)}")
+    print(f"Features            : {feature_cols}")
     print(f"Class balance       : 0 = {final_balance.get(0, 0)}, 1 = {final_balance.get(1, 0)}")
+    print(f"Positive rate       : {final_balance.get(1, 0) / len(df):.1%}")
     print(f"Year range          : {df[YEAR_COL].min()} – {df[YEAR_COL].max()}")
     print(f"Unique facilities   : {df[FACILITY_COL].nunique()}")
 

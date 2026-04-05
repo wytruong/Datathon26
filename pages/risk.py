@@ -75,7 +75,7 @@ with right:
 # ── What-If Scenario ──────────────────────────────────────────────────────────
 st.html("<div style='height:10px'></div>")
 st.markdown(
-    "<div style='font-size:13px;font-weight:600;color:#1a1a1a;margin-bottom:4px;'>What-If Scenario</div>",
+    "<div style='font-family:DM Serif Display,serif;font-size:15px;font-weight:normal;color:#1a1a18;margin-bottom:4px;'>What-If Scenario</div>",
     unsafe_allow_html=True,
 )
 
@@ -91,9 +91,12 @@ ed_visits_input = st.slider(
 # Recompute risk with modified feature vector
 if feature_values:
     modified = feature_values.copy()
-    ed_visit_keys = {"ed_visits_per_year"}
+    # Find whichever visit-related feature exists in the loaded feature list
+    visit_related = [c for c in feat_cols if "visit" in c.lower()]
+    print(f"[debug] feat_cols: {feat_cols}")
+    print(f"[debug] visit-related features found: {visit_related}")
     for i, col in enumerate(feat_cols):
-        if col in ed_visit_keys:
+        if col in visit_related:
             modified[i] = feature_values[i] * ed_visits_input
 
     X_mod = np.array(modified).reshape(1, -1)
@@ -116,24 +119,65 @@ st.html(f"""
 <div style="border:0.5px solid #e2ded8;border-radius:10px;padding:16px;background:#ffffff;
             display:flex;align-items:center;gap:32px;flex-wrap:wrap;">
     <div>
-        <div style="font-size:10px;font-weight:600;color:#9ca3af;text-transform:uppercase;
-                    margin-bottom:4px;">Baseline Risk</div>
-        <div style="font-size:22px;font-weight:600;color:#9ca3af;">{RISK_SCORE:.3f}</div>
+        <div style="font-family:'DM Sans',sans-serif;font-size:10px;font-weight:500;color:#9ca3af;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Baseline Risk</div>
+        <div style="font-family:'DM Serif Display',serif;font-size:22px;font-weight:normal;color:#9ca3af;">{RISK_SCORE:.3f}</div>
     </div>
     <div style="font-size:22px;color:#d1d5db;">→</div>
     <div>
-        <div style="font-size:10px;font-weight:600;color:#9ca3af;text-transform:uppercase;
-                    margin-bottom:4px;">Adjusted Risk</div>
-        <div style="font-size:28px;font-weight:700;color:#d97706;">{WHAT_IF_SCORE:.3f}</div>
+        <div style="font-family:'DM Sans',sans-serif;font-size:10px;font-weight:500;color:#9ca3af;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Adjusted Risk</div>
+        <div style="font-family:'DM Serif Display',serif;font-size:28px;font-weight:normal;color:#d97706;">{WHAT_IF_SCORE:.3f}</div>
     </div>
     <div>
-        <div style="font-size:10px;font-weight:600;color:#9ca3af;text-transform:uppercase;
-                    margin-bottom:4px;">Delta</div>
-        <div style="font-size:18px;font-weight:600;color:{delta_col};">{delta_str}</div>
+        <div style="font-family:'DM Sans',sans-serif;font-size:10px;font-weight:500;color:#9ca3af;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Delta</div>
+        <div style="font-family:'DM Sans',sans-serif;font-size:18px;font-weight:500;color:{delta_col};">{delta_str}</div>
     </div>
     <div>
         <span class="risk-pill {wi_pill_class}">{wi_level} Risk</span>
     </div>
+</div>
+""")
+
+# ── Recommendations card ──────────────────────────────────────────────────────
+st.html("<div style='height:10px'></div>")
+
+if WHAT_IF_SCORE >= 0.7:
+    _rec_title  = "Recommended Actions"
+    _rec_border = "#ef4444"
+    _rec_items  = [
+        "Initiate patient transfer protocol to nearby facilities",
+        "Request surge staffing for next shift",
+        "Alert charge nurse and ED director",
+        "Review current bed availability immediately",
+    ]
+elif WHAT_IF_SCORE >= 0.4:
+    _rec_title  = "Recommended Actions"
+    _rec_border = "#f59e0b"
+    _rec_items  = [
+        "Alert charge nurse of elevated risk",
+        "Review staffing levels for next 24 hours",
+        "Monitor bed turnover rate closely",
+        "Prepare surge protocol if burden increases",
+    ]
+else:
+    _rec_title  = "Status"
+    _rec_border = "#22c55e"
+    _rec_items  = [
+        "Normal operations — continue monitoring",
+        "Next review scheduled based on trend",
+    ]
+
+_bullets = "".join(
+    f'<li style="font-family:\'DM Sans\',sans-serif;font-size:13px;color:#374151;'
+    f'margin-bottom:6px;">{item}</li>'
+    for item in _rec_items
+)
+st.html(f"""
+<div style="border:1px solid {_rec_border};border-radius:10px;padding:18px 20px;
+            background:#ffffff;margin-top:4px;">
+    <div style="font-family:'DM Sans',sans-serif;font-size:10px;font-weight:600;
+                color:{_rec_border};text-transform:uppercase;letter-spacing:0.07em;
+                margin-bottom:10px;">{_rec_title}</div>
+    <ul style="margin:0;padding-left:18px;">{_bullets}</ul>
 </div>
 """)
 

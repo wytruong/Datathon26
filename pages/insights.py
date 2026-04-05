@@ -1,19 +1,23 @@
 import textwrap
 import sys
 import os
+import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.style import CHART_BASE, CHART_WIDTH
 from utils.data import (
-    load_facility_ci, load_county_summary,
-    load_stats_results,
+    load_facility_ci, load_county_summary, load_stats_results,
+    load_features, load_logistic_model, load_feature_list,
 )
 
 facility_ci    = load_facility_ci()
 county_summary = load_county_summary()
 stats          = load_stats_results()
+df_feat        = load_features()
+lr_model       = load_logistic_model()
+feat_cols      = load_feature_list()
 
 st.divider()
 
@@ -46,9 +50,9 @@ with chart_col:
     ))
     fig.update_layout(**{
         **CHART_BASE,
-        "title": dict(text="Top 15 Facilities by Average ED Burden", font=dict(size=13, color="#1a1a1a"), x=0),
+        "title": dict(text="Top 15 Facilities by Average ED Burden", font=dict(size=13, color="#1a1a18", family="DM Sans, sans-serif"), x=0),
         "xaxis": dict(showgrid=True, gridcolor="#f0ede8", color="#9ca3af", title="Mean Burden Score"),
-        "yaxis": dict(showgrid=False, color="#374151", tickfont=dict(size=10)),
+        "yaxis": dict(showgrid=False, color="#374151", tickfont=dict(size=10, family="DM Sans, sans-serif")),
         "margin": dict(l=10, r=30, t=45, b=10),
     })
     st.plotly_chart(fig, width=CHART_WIDTH)
@@ -65,21 +69,21 @@ sig_bg    = "rgba(34,197,94,0.07)" if p_val < 0.05 else "rgba(156,163,175,0.07)"
 
 st.html(textwrap.dedent(f"""
     <div style="border:0.5px solid #e2ded8;border-radius:10px;padding:16px;background:#ffffff;margin:12px 0;">
-        <div style="font-size:10px;font-weight:600;color:#9ca3af;text-transform:uppercase;margin-bottom:8px;">
+        <div style="font-family:'DM Sans',sans-serif;font-size:10px;font-weight:500;color:#9ca3af;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">
             Pre vs Post-COVID Burden — Paired T-Test (per facility)
         </div>
         <div style="display:flex;gap:24px;flex-wrap:wrap;">
-            <div><span style="font-size:11px;color:#6b7280;">t-statistic</span><br>
-                 <span style="font-size:18px;font-weight:600;color:#1a1a1a;">{t_stat:.4f}</span></div>
-            <div><span style="font-size:11px;color:#6b7280;">p-value</span><br>
-                 <span style="font-size:18px;font-weight:600;color:#1a1a1a;">{p_val:.4f}</span></div>
-            <div><span style="font-size:11px;color:#6b7280;">Mean pre-COVID</span><br>
-                 <span style="font-size:18px;font-weight:600;color:#1a1a1a;">{mean_pre:.4f}</span></div>
-            <div><span style="font-size:11px;color:#6b7280;">Mean post-COVID</span><br>
-                 <span style="font-size:18px;font-weight:600;color:#1a1a1a;">{mean_post:.4f}</span></div>
+            <div><span style="font-family:'DM Sans',sans-serif;font-size:11px;color:#6b7280;">t-statistic</span><br>
+                 <span style="font-family:'DM Serif Display',serif;font-size:18px;font-weight:normal;color:#1a1a18;">{t_stat:.4f}</span></div>
+            <div><span style="font-family:'DM Sans',sans-serif;font-size:11px;color:#6b7280;">p-value</span><br>
+                 <span style="font-family:'DM Serif Display',serif;font-size:18px;font-weight:normal;color:#1a1a18;">{p_val:.4f}</span></div>
+            <div><span style="font-family:'DM Sans',sans-serif;font-size:11px;color:#6b7280;">Mean pre-COVID</span><br>
+                 <span style="font-family:'DM Serif Display',serif;font-size:18px;font-weight:normal;color:#1a1a18;">{mean_pre:.4f}</span></div>
+            <div><span style="font-family:'DM Sans',sans-serif;font-size:11px;color:#6b7280;">Mean post-COVID</span><br>
+                 <span style="font-family:'DM Serif Display',serif;font-size:18px;font-weight:normal;color:#1a1a18;">{mean_post:.4f}</span></div>
             <div style="display:flex;align-items:center;">
-                <span style="background:{sig_bg};color:{sig_color};font-size:11px;font-weight:600;
-                      padding:4px 12px;border-radius:20px;text-transform:uppercase;">{interp}</span>
+                <span style="font-family:'DM Sans',sans-serif;background:{sig_bg};color:{sig_color};font-size:11px;font-weight:500;
+                      padding:4px 12px;border-radius:20px;text-transform:uppercase;letter-spacing:0.05em;">{interp}</span>
             </div>
         </div>
     </div>
@@ -167,9 +171,73 @@ with chart_col2:
     ))
     fig2.update_layout(**{
         **CHART_BASE,
-        "title": dict(text="Top 10 Counties — Average ED Burden Score", font=dict(size=13, color="#1a1a1a"), x=0),
+        "title": dict(text="Top 10 Counties — Average ED Burden Score", font=dict(size=13, color="#1a1a18", family="DM Sans, sans-serif"), x=0),
         "xaxis": dict(showgrid=True, gridcolor="#f0ede8", color="#9ca3af", title="Avg Burden Score"),
-        "yaxis": dict(showgrid=False, color="#374151", tickfont=dict(size=11)),
+        "yaxis": dict(showgrid=False, color="#374151", tickfont=dict(size=11, family="DM Sans, sans-serif")),
         "margin": dict(l=10, r=60, t=45, b=10),
     })
     st.plotly_chart(fig2, width=CHART_WIDTH)
+
+st.divider()
+
+# ── Color-coded facility risk table ───────────────────────────────────────────
+st.markdown('<div class="section-header">Statewide Facility Risk Scorecard</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-sub">All facilities ranked by predicted overload risk — latest available year</div>', unsafe_allow_html=True)
+
+# Batch compute risk for all facilities at their latest year
+latest_rows = df_feat.sort_values("year").groupby("facility_name").last().reset_index()
+X_all = latest_rows[feat_cols].fillna(0).values
+try:
+    risks = lr_model.predict_proba(X_all)[:, 1]
+except Exception:
+    risks = np.full(len(latest_rows), 0.5)
+
+latest_rows = latest_rows.copy()
+latest_rows["risk_score"]   = risks
+latest_rows["burden_score"] = latest_rows["burden_score"].round(3)
+latest_rows["risk_score"]   = latest_rows["risk_score"].round(3)
+
+# Sort by risk descending
+table_df = (
+    latest_rows[["facility_name", "county_name", "er_service_level_desc",
+                 "burden_score", "risk_score", "year"]]
+    .sort_values("risk_score", ascending=False)
+    .reset_index(drop=True)
+)
+
+def _risk_row_html(row):
+    rs = row["risk_score"]
+    if rs >= 0.70:
+        dot_color, cls = "#ef4444", "risk-high"
+    elif rs >= 0.40:
+        dot_color, cls = "#f59e0b", "risk-med"
+    else:
+        dot_color, cls = "#22c55e", "risk-low"
+    return (
+        f"<tr>"
+        f"<td><span class='risk-dot' style='background:{dot_color}'></span>{row['facility_name']}</td>"
+        f"<td>{row['county_name']}</td>"
+        f"<td>{row['er_service_level_desc']}</td>"
+        f"<td>{row['burden_score']:.3f}</td>"
+        f"<td class='{cls}' style='font-weight:500'>{rs:.3f}</td>"
+        f"<td>{int(row['year'])}</td>"
+        f"</tr>"
+    )
+
+rows_html = "".join(_risk_row_html(r) for _, r in table_df.iterrows())
+risk_table_html = textwrap.dedent(f"""
+    <div class="anomaly-wrapper" style="max-height:480px;overflow-y:auto;">
+        <table class="risk-table">
+            <thead><tr>
+                <th>Facility</th>
+                <th>County</th>
+                <th>Service Level</th>
+                <th>Burden Score</th>
+                <th>Risk Score</th>
+                <th>Year</th>
+            </tr></thead>
+            <tbody>{rows_html}</tbody>
+        </table>
+    </div>
+""").strip()
+st.html(risk_table_html)
